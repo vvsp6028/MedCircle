@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "MedCircle",
+    "slug": "medcircle",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "medcircle",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#4F46E5"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.medcircle.app",
+      "buildNumber": "1.0.0"
+    },
+    "android": {
+      "package": "com.medcircle.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#4F46E5"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MedCircle needs access to upload images in your posts."
+        }
+      ]
+    ]
+  }
+}
