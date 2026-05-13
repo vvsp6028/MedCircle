@@ -26,6 +26,7 @@ import { CURRENT_USER, SAMPLE_POSTS } from '../../constants/sampleData';
 import { BATCH_LABELS, ThemeMode } from '../../types';
 import { PostCard } from '../../components/PostCard';
 import { haptic } from '../../lib/haptics';
+import { signOut } from '../../lib/auth';
 import { showComingSoon } from '../../lib/toast';
 
 export default function Profile() {
@@ -46,8 +47,9 @@ export default function Profile() {
   const themeLabel =
     mode === 'light' ? 'Light' : mode === 'dark' ? 'Dark' : 'Auto (System)';
 
-  const logout = () => {
+const logout = async () => {
     haptic.warning();
+    await signOut();
     router.replace('/(auth)/login');
   };
 

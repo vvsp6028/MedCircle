@@ -9,6 +9,7 @@ import {
   Pressable,
   Modal,
   FlatList,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -19,15 +20,10 @@ import { Button } from '../../components/Button';
 import { COLLEGES } from '../../constants/sampleData';
 import { BATCH_LABELS, BatchYear } from '../../types';
 import { haptic } from '../../lib/haptics';
+import { signUp } from '../../lib/auth';
 
 const BATCH_KEYS: BatchYear[] = [
-  '1st_year',
-  '2nd_year',
-  '3rd_year',
-  '4th_year',
-  'final_year',
-  'intern',
-  'graduated',
+  '1st_year', '2nd_year', '3rd_year', '4th_year', 'final_year', 'intern', 'graduated',
 ];
 
 export default function Signup() {
@@ -40,20 +36,51 @@ export default function Signup() {
   const [batch, setBatch] = useState<BatchYear | null>(null);
   const [collegeOpen, setCollegeOpen] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const canSubmit =
+    !loading &&
     name.trim().length > 1 &&
     email.includes('@') &&
     password.length >= 6 &&
     college !== null &&
     batch !== null;
 
-  const submit = () => {
+  const submit = async () => {
     if (!canSubmit) return;
-    haptic.success();
-    // For now: jump straight to feed.
-    // Later: → /(auth)/pending if community approval is required.
-    router.replace('/(tabs)/home');
+    setErrorMsg(null);
+    setLoading(true);
+    haptic.light();
+
+    const { data, error } = await signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      fullName: name.trim(),
+      collegeName: college!,
+      batchYear: batch!,
+    });
+
+    setLoading(false);
+
+    if (error) {
+      haptic.warning();
+      setErrorMsg(error.message);
+      return;
+    }
+
+    if (data?.user) {
+      haptic.success();
+      // Email confirmation is OFF in Supabase, so session is immediate
+      router.replace('/(tabs)/home');
+    } else {
+      // Edge case: signup succeeded but no session (e.g. confirmation required)
+      Alert.alert(
+        'Check your email',
+        'We sent you a confirmation link. Please verify your email and log in.',
+      );
+      router.replace('/(auth)/login');
+    }
   };
 
   const goBack = () => {
@@ -95,8 +122,8 @@ export default function Signup() {
               onChangeText={setName}
               placeholder="Venkata Prasad"
               autoCapitalize="words"
+              editable={!loading}
             />
-
             <Input
               label="Email"
               value={email}
@@ -105,14 +132,15 @@ export default function Signup() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              editable={!loading}
             />
-
             <Input
               label="Password"
               value={password}
               onChangeText={setPassword}
               placeholder="At least 6 characters"
               secureTextEntry={!showPw}
+              editable={!loading}
               iconRight={
                 <Pressable onPress={() => setShowPw((v) => !v)} hitSlop={8}>
                   {showPw ? (
@@ -123,32 +151,44 @@ export default function Signup() {
                 </Pressable>
               }
             />
-
             <PickerField
               label="College"
               value={college ?? 'Select your college'}
               placeholder={!college}
-              onPress={() => setCollegeOpen(true)}
+              onPress={() => !loading && setCollegeOpen(true)}
             />
-
             <PickerField
               label="Batch Year"
               value={batch ? BATCH_LABELS[batch] : 'Select your year'}
               placeholder={!batch}
-              onPress={() => setBatchOpen(true)}
+              onPress={() => !loading && setBatchOpen(true)}
             />
           </View>
 
+          {errorMsg && (
+            <View style={[styles.errorBox, { backgroundColor: theme.colors.errorSoft }]}>
+              <Text style={[styles.errorText, { color: theme.colors.error }]}>
+                {errorMsg}
+              </Text>
+            </View>
+          )}
+
           <View style={{ marginTop: 28 }}>
-            <Button
-              size="lg"
-              fullWidth
-              onPress={submit}
-              disabled={!canSubmit}
-            >
-              Create Account
+            <Button size="lg" fullWidth onPress={submit} disabled={!canSubmit} loading={loading}>
+              {loading ? 'Creating account…' : 'Create Account'}
             </Button>
           </View>
+
+          <Pressable
+            onPress={() => router.replace('/(auth)/login')}
+            style={{ marginTop: 16, alignSelf: 'center' }}
+            disabled={loading}
+          >
+            <Text style={[styles.bottomLink, { color: theme.colors.textSecondary }]}>
+              Already have an account?{' '}
+              <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>Sign in</Text>
+            </Text>
+          </Pressable>
 
           <Text style={[styles.terms, { color: theme.colors.textTertiary }]}>
             By signing up, you agree to our Terms of Service and Privacy Policy.
@@ -156,35 +196,25 @@ export default function Signup() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Modals */}
       <PickerModal
         open={collegeOpen}
         title="Select your college"
         onClose={() => setCollegeOpen(false)}
         items={COLLEGES.map((c) => ({ key: c, label: c }))}
         selected={college}
-        onSelect={(k) => {
-          setCollege(k);
-          setCollegeOpen(false);
-        }}
+        onSelect={(k) => { setCollege(k); setCollegeOpen(false); }}
       />
-
       <PickerModal
         open={batchOpen}
         title="Select your batch year"
         onClose={() => setBatchOpen(false)}
         items={BATCH_KEYS.map((b) => ({ key: b, label: BATCH_LABELS[b] }))}
         selected={batch}
-        onSelect={(k) => {
-          setBatch(k as BatchYear);
-          setBatchOpen(false);
-        }}
+        onSelect={(k) => { setBatch(k as BatchYear); setBatchOpen(false); }}
       />
     </SafeAreaView>
   );
 }
-
-// --- Picker field ---
 
 interface PickerFieldProps {
   label: string;
@@ -193,18 +223,11 @@ interface PickerFieldProps {
   onPress: () => void;
 }
 
-const PickerField: React.FC<PickerFieldProps> = ({
-  label,
-  value,
-  placeholder,
-  onPress,
-}) => {
+const PickerField: React.FC<PickerFieldProps> = ({ label, value, placeholder, onPress }) => {
   const { theme } = useTheme();
   return (
     <View>
-      <Text style={[styles.pickerLabel, { color: theme.colors.textSecondary }]}>
-        {label}
-      </Text>
+      <Text style={[styles.pickerLabel, { color: theme.colors.textSecondary }]}>{label}</Text>
       <Pressable
         onPress={onPress}
         style={[
@@ -220,11 +243,7 @@ const PickerField: React.FC<PickerFieldProps> = ({
           numberOfLines={1}
           style={[
             styles.pickerValue,
-            {
-              color: placeholder
-                ? theme.colors.textTertiary
-                : theme.colors.textPrimary,
-            },
+            { color: placeholder ? theme.colors.textTertiary : theme.colors.textPrimary },
           ]}
         >
           {value}
@@ -234,8 +253,6 @@ const PickerField: React.FC<PickerFieldProps> = ({
     </View>
   );
 };
-
-// --- Picker modal ---
 
 interface PickerModalProps {
   open: boolean;
@@ -247,44 +264,17 @@ interface PickerModalProps {
 }
 
 const PickerModal: React.FC<PickerModalProps> = ({
-  open,
-  title,
-  onClose,
-  items,
-  selected,
-  onSelect,
+  open, title, onClose, items, selected, onSelect,
 }) => {
   const { theme } = useTheme();
-
   return (
-    <Modal
-      visible={open}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
+    <Modal visible={open} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} />
-      <View
-        style={[
-          styles.sheet,
-          {
-            backgroundColor: theme.colors.surface,
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-          },
-        ]}
-      >
+      <View style={[styles.sheet, { backgroundColor: theme.colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24 }]}>
         <View style={styles.grabber}>
-          <View
-            style={[
-              styles.grabberBar,
-              { backgroundColor: theme.colors.border },
-            ]}
-          />
+          <View style={[styles.grabberBar, { backgroundColor: theme.colors.border }]} />
         </View>
-        <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>
-          {title}
-        </Text>
+        <Text style={[styles.sheetTitle, { color: theme.colors.textPrimary }]}>{title}</Text>
         <FlatList
           data={items}
           keyExtractor={(it) => it.key}
@@ -293,25 +283,17 @@ const PickerModal: React.FC<PickerModalProps> = ({
             return (
               <Pressable
                 onPress={() => onSelect(item.key)}
-                style={[
-                  styles.sheetItem,
-                  { borderBottomColor: theme.colors.borderSoft },
-                ]}
+                style={[styles.sheetItem, { borderBottomColor: theme.colors.borderSoft }]}
               >
                 <Text
                   style={[
                     styles.sheetItemText,
-                    {
-                      color: theme.colors.textPrimary,
-                      fontWeight: isSelected ? '700' : '500',
-                    },
+                    { color: theme.colors.textPrimary, fontWeight: isSelected ? '700' : '500' },
                   ]}
                 >
                   {item.label}
                 </Text>
-                {isSelected && (
-                  <Check size={18} color={theme.colors.primary} />
-                )}
+                {isSelected && <Check size={18} color={theme.colors.primary} />}
               </Pressable>
             );
           }}
@@ -326,61 +308,28 @@ const PickerModal: React.FC<PickerModalProps> = ({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   topBar: { paddingHorizontal: 12, paddingTop: 8 },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  iconBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   scroll: { padding: 24, paddingTop: 16 },
   title: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
   subtitle: { fontSize: 14, marginTop: 4 },
   pickerLabel: { fontSize: 13, fontWeight: '500', marginBottom: 6 },
   pickerField: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1.5,
-    paddingHorizontal: 14,
-    minHeight: 50,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderWidth: 1.5, paddingHorizontal: 14, minHeight: 50,
   },
   pickerValue: { flex: 1, fontSize: 15 },
-  terms: {
-    fontSize: 12,
-    marginTop: 24,
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  backdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-  },
+  errorBox: { padding: 12, borderRadius: 12, marginTop: 16 },
+  errorText: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
+  bottomLink: { fontSize: 14 },
+  terms: { fontSize: 12, marginTop: 24, textAlign: 'center', lineHeight: 16 },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 16 },
   grabber: { alignItems: 'center', paddingTop: 8, paddingBottom: 4 },
   grabberBar: { width: 40, height: 4, borderRadius: 2 },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-  },
+  sheetTitle: { fontSize: 18, fontWeight: '700', paddingVertical: 12, paddingHorizontal: 4 },
   sheetItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 14, paddingHorizontal: 4, borderBottomWidth: 1,
   },
   sheetItemText: { fontSize: 15 },
 });

@@ -23,3 +23,6 @@ logs
 *.log
 .vscode/
 .idea/
+
+# Backup files from sed -i.bak
+*.bak
